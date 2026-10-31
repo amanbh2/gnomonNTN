@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AMAN.GNOMON-NTN — 3D/2D Satellite Cell Simulator (3GPP TS 23.032 & TS 38.331)</title>
+  <meta name="description" content="High-precision interactive 3D/2D satellite cell simulator and Gnomonic tangent plane projection engine conforming to 3GPP TS 23.032 Clause 5.3 and TS 38.331 SIB19." />
+  <meta name="author" content="Aman Bhaskar" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="res/favicon.svg" />
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Three.js & OrbitControls via CDN with automatic fallback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script>
+    if (typeof THREE !== 'undefined' && typeof THREE.OrbitControls === 'undefined') {
+      document.write('<script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"><\/script>');
+    }
+  </script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="top-navbar">
+    <div class="brand-container">
+      <img src="res/favicon.svg" alt="AMAN.GNOMON-NTN Logo" class="brand-logo" />
+      <span class="brand-title">AMAN<span class="theme-accent-text">.GNOMON-NTN</span></span>
+      <span class="brand-badge">3GPP TS 23.032 / SIB19</span>
+    </div>
+
+    <div class="nav-actions">
+      <button id="btn-open-code" class="btn-nav highlight">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        View Code (C vs. JS)
+      </button>
+      <button id="btn-open-theory" class="btn-nav">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        Theory & 3GPP Specs
+      </button>
+      <a href="https://github.com/amanbh2/gnomonNTN" target="_blank" rel="noopener noreferrer" class="btn-nav" title="View GitHub Repository">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <!-- Real-Time Telemetry HUD & Status Strip -->
+  <section class="telemetry-header">
+    <div class="status-row">
+      <!-- Big Decision Badge -->
+      <div id="decision-badge" class="status-badge status-inside">
+        <span class="indicator-dot"></span>
+        <span id="decision-text" class="status-title">INSIDE CELL</span>
+        <span id="decision-subtext" class="status-detail">ODD Ray Crossings (1) • SIB19 Cell Match</span>
+      </div>
+
+      <!-- Quick Preset Selector & Winding Toggle -->
+      <div class="quick-controls">
+        <div class="control-group">
+          <label for="preset-select">Preset Scenario:</label>
+          <select id="preset-select" class="select-custom">
+            <option value="hexagonal">1. Regional LEO Hexagonal Beam (~1,800 km across)</option>
+            <option value="triangular">2. Triangular Sector Macro Beam (~1,600 km span)</option>
+            <option value="coastline">3. Irregular Coastline Cell (~2,200 km Mediterranean)</option>
+            <option value="antimeridian">4. 180° Antimeridian Crosser (Fiji / Tonga / Samoa)</option>
+            <option value="polar">5. High-Latitude Polar Macro Cell (Arctic Ocean 78°N)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="winding-toggle" title="Toggle 3GPP TS 23.032 Clause 5.3 Clockwise vs CCW trap">Winding Trap:</label>
+          <label class="switch">
+            <input type="checkbox" id="winding-toggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trap Warning Banner (Shown when Counter-Clockwise) -->
+    <div id="trap-warning-box" class="trap-warning-banner"></div>
+
+    <!-- Telemetry Cards Grid -->
+    <div class="telemetry-grid">
+      <!-- Tier 1 MBR Card -->
+      <div class="telemetry-card">
+        <div class="telemetry-label">
+          <span>Tier-1 MBR Check</span>
+          <span style="color: var(--cyan-primary);">O(1)</span>
+        </div>
+        <div id="telemetry-mbr-status" class="telemetry-val pass">PASS</div>
+        <div id="telemetry-mbr-bounds" class="telemetry-sub">Lat: [40.00°, 56.00°] | Lon: [0.50°, 23.50°]</div>
+      </div>
+
+      <!-- Centroid Card -->
+      <div class="telemetry-card">
+        <div class="telemetry-label">
+          <span>Cell Centroid (Tangent Point)</span>
+          <span style="color: var(--amber-centroid);">Origin (0,0)</span>
+        </div>
+        <div id="telemetry-centroid-deg" class="telemetry-val" style="color: var(--amber-centroid);">48.3845°N, 12.0000°E</div>
+        <div id="telemetry-centroid-asn" class="telemetry-sub">Lat: 4510103 (north) | Lon: 559241</div>
+      </div>
+
+      <!-- Gnomonic Factor cos(c) Card -->
+      <div class="telemetry-card">
+        <div class="telemetry-label">
+          <span>Gnomonic Cosine Factor</span>
+          <span>cos(c) &gt; 0</span>
+        </div>
+        <div id="telemetry-cos-c" class="telemetry-val pass">0.99984</div>
+        <div id="telemetry-cos-status" class="telemetry-sub">Central angle c = 1.01° (Visible Horizon)</div>
+      </div>
+
+      <!-- Tangent Coordinates (UE) Card -->
+      <div class="telemetry-card">
+        <div class="telemetry-label">
+          <span>Local Tangent Vector (UE)</span>
+          <span>Metric Plane</span>
+        </div>
+        <div id="telemetry-ue-tangent" class="telemetry-val">+111.4 km, +13.0 km</div>
+        <div id="telemetry-ue-dist" class="telemetry-sub">Distance to Centroid: 112.2 km</div>
+      </div>
+
+      <!-- Ray Crossings & Parity Card -->
+      <div class="telemetry-card">
+        <div class="telemetry-label">
+          <span>Jordan Ray Intersections</span>
+          <span>Parity Check</span>
+        </div>
+        <div id="telemetry-ray-count" class="telemetry-val pass">1 Intersection</div>
+        <div id="telemetry-ray-parity" class="telemetry-sub">Parity: ODD (Interior)</div>
+      </div>
+
+      <!-- 3GPP Winding Order Card -->
+      <div class="telemetry-card">
+        <div class="telemetry-label">
+          <span>3GPP TS 23.032 Order</span>
+          <span>Clause 5.3</span>
+        </div>
+        <div id="telemetry-winding-status" class="telemetry-val pass">CLOCKWISE (Valid)</div>
+        <div class="telemetry-sub">Right-hand interior convention</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Synchronized Dual-View Main Split Screen -->
+  <main class="main-workspace">
+    <!-- Left Viewport: Interactive 3D Earth Globe (Three.js) -->
+    <section class="viewport-panel" id="viewport-globe">
+      <div class="viewport-header">
+        <div class="viewport-title">
+          <span class="dot"></span>
+          <span>3D Geodesic Earth Globe</span>
+        </div>
+        <div class="viewport-actions">
+          <button id="btn-focus-cell" class="btn-tool" title="Smoothly center camera on satellite cell">🎯 Center Cell</button>
+          <button id="btn-reset-globe" class="btn-tool" title="Reset 3D camera to default orbit position">⟲ Reset View</button>
+        </div>
+      </div>
+
+      <div id="globe-container"></div>
+
+      <div class="viewport-overlay-footer">
+        <div class="overlay-pill">
+          💡 Drag UE pin on globe • Great-circle geodesic edges (SLERP)
+        </div>
+        <div class="overlay-pill" id="globe-mode-pill">
+          LEO Satellite Conical Beam Active
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Viewport: 2D Gnomonic Tangent Plane (Interactive Canvas) -->
+    <section class="viewport-panel" id="viewport-plane">
+      <div class="viewport-header">
+        <div class="viewport-title plane">
+          <span class="dot"></span>
+          <span>2D Gnomonic Tangent Plane (Centroid Origin)</span>
+        </div>
+        <div class="viewport-actions">
+          <button id="btn-reset-plane" class="btn-tool" title="Auto-fit tangent plane zoom and center">⛶ Fit Plane</button>
+        </div>
+      </div>
+
+      <div class="plane-container">
+        <canvas id="plane-canvas"></canvas>
+      </div>
+
+      <div class="viewport-overlay-footer">
+        <div class="overlay-pill">
+          ⚡ Great circles project to straight lines • Live ray-casting (+X)
+        </div>
+        <div class="overlay-pill">
+          Drag UE or Vertices on plane
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Secondary Controls, Vertex Editor & ASN.1 Inspector -->
+  <section class="secondary-section">
+    <!-- Panel 1: Vertex Coordinates & Satellite Parameters -->
+    <div class="card-panel">
+      <div class="panel-header">
+        <span class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-primary)" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          Polygon Vertices Editor (TS 23.032 Clause 5.3)
+        </span>
+        <span id="vertex-count-badge" class="brand-badge">6 / 15 Vertices</span>
+      </div>
+
+      <div id="vertices-list-container" class="vertices-list"></div>
+
+      <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <button id="btn-add-vertex" class="btn-action">+ Add Vertex (Max 15)</button>
+        <div class="control-group">
+          <span style="font-size: 0.72rem; color: var(--text-muted);">Shift+Click anywhere on Globe/Plane to place UE</span>
+        </div>
+      </div>
+
+      <!-- Satellite Orbit Controls -->
+      <div class="panel-header" style="margin-top: 0.5rem;">
+        <span class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber-centroid)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+          LEO Satellite Spacecraft Telemetry
+        </span>
+      </div>
+
+      <div class="satellite-controls-grid">
+        <div class="slider-group">
+          <label>Satellite Altitude: <span id="altitude-display" style="color: var(--cyan-primary);">550 km</span></label>
+          <input type="range" id="altitude-slider" min="300" max="1200" step="25" value="550" />
+        </div>
+
+        <div class="toggle-switch-container">
+          <span style="font-family: var(--font-mono); font-size: 0.76rem; color: var(--text-secondary);">LEO Orbital Motion:</span>
+          <label class="switch">
+            <input type="checkbox" id="orbit-toggle" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: Live 3GPP ASN.1 Inspector -->
+    <div class="card-panel">
+      <div class="panel-header">
+        <span class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-primary)" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
+          3GPP TS 38.331 SIB19 ASN.1 Bitfield Inspector
+        </span>
+        <span class="brand-badge" style="color: #7DD3FC; border-color: rgba(125, 211, 252, 0.3);">Live Bitfield Stream</span>
+      </div>
+
+      <div class="asn1-box" id="asn1-inspector-content">-- Initializing ASN.1 stream...</div>
+
+      <!-- Direct Manual UE Coordinate Input -->
+      <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+        <span style="font-family: var(--font-mono); font-size: 0.76rem; color: var(--text-secondary);">Direct UE Coordinates:</span>
+        <input type="number" id="ue-lat-input" step="0.001" placeholder="Lat °" class="coord-input" style="width: 80px;" />
+        <input type="number" id="ue-lon-input" step="0.001" placeholder="Lon °" class="coord-input" style="width: 80px;" />
+        <button id="btn-apply-ue" class="btn-action">Set Position</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Replicated Signature Footer (Aman Bhaskar Portfolio Style) -->
+  <footer class="footer-signature">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <span class="footer-brand-title">AMAN<span class="theme-accent-text">.GNOMON-NTN</span></span>
+        <p class="footer-tagline">
+          Interactive 3D geodesic satellite cell simulator & Gnomonic projection engine conforming to 3GPP TS 23.032 Clause 5.3 & TS 38.331 SIB19.
+        </p>
+      </div>
+
+      <div class="footer-links">
+        <a href="https://amanbh2.github.io/portfolio/" target="_blank" rel="noopener noreferrer" class="footer-link">
+          Portfolio
+        </a>
+        <a href="https://amanbh2.github.io/learning/#/5g-ran/51-ntn-geographic-cell-modeling" target="_blank" rel="noopener noreferrer" class="footer-link">
+          5G RAN Knowledge Base
+        </a>
+        <a href="https://github.com/amanbh2" target="_blank" rel="noopener noreferrer" class="footer-link">
+          GitHub
+        </a>
+        <span class="footer-attribution">
+          Engineered with ❤️ & AI by <strong>Aman Bhaskar</strong>
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Modal 1: Code Inspector (C vs. JS) -->
+  <div id="code-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-primary)" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          Dual Code Inspector (C99 Production vs. ES6 Runtime)
+        </div>
+        <button id="btn-close-code" class="btn-close-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-tabs">
+          <button id="tab-btn-c" class="tab-btn active">isLocationInCellGeoArea.c (C99)</button>
+          <button id="tab-btn-js" class="tab-btn">gnomonPip.js (ES6 JavaScript)</button>
+        </div>
+
+        <div class="code-container">
+          <div class="code-toolbar">
+            <button id="btn-copy-code" class="btn-action">Copy Code</button>
+            <button id="btn-download-code" class="btn-action">Download File</button>
+          </div>
+          <pre class="code-pre"><code id="code-block-content"></code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Theory & 3GPP Specs -->
+  <div id="theory-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-primary)" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+          Mathematical Theory & 3GPP TS 23.032 / SIB19 Specifications
+        </div>
+        <button id="btn-close-theory" class="btn-close-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Stage 1 -->
+        <div class="theory-stage-card">
+          <div class="theory-stage-header">
+            <span class="stage-number">STAGE 1</span>
+            <span class="stage-title">Curved Earth vs Flat Map: The Geodesic Dilemma</span>
+          </div>
+          <div class="theory-content">
+            <p>
+              In terrestrial networks, cells are small (~1 km) and can be approximated as flat 2D planes. In Non-Terrestrial Networks (NTN), satellite beam footprints span hundreds of kilometers across Earth's spherical surface.
+            </p>
+            <p>
+              The shortest path between two points on Earth is a <strong>geodesic curve (great circle)</strong>, not a straight line on a flat Mercator or equirectangular projection. Naive planar ray-casting directly on latitude/longitude coordinates produces catastrophic errors of up to <strong>150–200 km</strong> at high latitudes and across wide beams!
+            </p>
+            <div class="theory-formula-box">
+              Geodesic Arc via Spherical Linear Interpolation (SLERP):<br />
+              v(t) = [sin((1-t)θ) / sin(θ)] · v₁ + [sin(tθ) / sin(θ)] · v₂<br />
+              where θ = arccos(v₁ · v₂) on the unit sphere
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage 2 -->
+        <div class="theory-stage-card">
+          <div class="theory-stage-header">
+            <span class="stage-number">STAGE 2</span>
+            <span class="stage-title">Tier-1 Minimum Bounding Rectangle (MBR) Fast-Reject & 180° Date Line Split</span>
+          </div>
+          <div class="theory-content">
+            <p>
+              Before executing trigonometric projections, the UE performs an $O(1)$ bounding box check. If the UE is outside the latitude/longitude envelope $[\phi_{min}, \phi_{max}] \times [\lambda_{min}, \lambda_{max}]$, it is instantly rejected.
+            </p>
+            <p>
+              <strong>The 180° Antimeridian Challenge:</strong> When a cell spans the International Date Line (e.g. Fiji, Tonga, Kiribati), longitudes jump from $+180^\circ$ to $-180^\circ$. A standard min/max would span the entire globe! Our engine detects this discontinuity and partitions the envelope into dual intervals:
+            </p>
+            <div class="theory-formula-box">
+              Antimeridian Longitude Envelope Condition:<br />
+              λ_ue ∈ [λ_min_east, +180°] ∪ [-180°, λ_max_west]
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage 3 -->
+        <div class="theory-stage-card">
+          <div class="theory-stage-header">
+            <span class="stage-number">STAGE 3</span>
+            <span class="stage-title">Gnomonic Tangent Projection: The Great Circle Miracle</span>
+          </div>
+          <div class="theory-content">
+            <p>
+              The Gnomonic projection projects points on a sphere from Earth's center onto a local plane tangent to the cell Centroid $(\phi_0, \lambda_0)$.
+            </p>
+            <p>
+              <strong>The Fundamental Mathematical Property:</strong> Because every great circle lies in a plane passing through Earth's center, its projection onto the tangent plane is the intersection of two planes — which is an <strong>exact straight line segment!</strong> Therefore, geodesic polygon boundaries on Earth become mathematically exact flat polygon edges on the tangent plane.
+            </p>
+            <div class="theory-formula-box">
+              cos(c) = sin(φ₀)·sin(φ) + cos(φ₀)·cos(φ)·cos(λ - λ₀)<br />
+              x = [cos(φ)·sin(λ - λ₀)] / cos(c)<br />
+              y = [cos(φ₀)·sin(φ) - sin(φ₀)·cos(φ)·cos(λ - λ₀)] / cos(c)<br />
+              Valid for the visible hemisphere where cos(c) &gt; 0 (c &lt; 90°)
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage 4 -->
+        <div class="theory-stage-card">
+          <div class="theory-stage-header">
+            <span class="stage-number">STAGE 4</span>
+            <span class="stage-title">Jordan Curve Ray-Casting & The 3GPP TS 23.032 Right-Hand Rule Trap</span>
+          </div>
+          <div class="theory-content">
+            <p>
+              Once mapped to the tangent plane, the UE location $(x_0, y_0)$ is evaluated using the Jordan Curve Parity Theorem. A horizontal ray is cast in the $+X$ direction:
+            </p>
+            <div class="theory-formula-box">
+              Parity Rule: Intersections mod 2 == 1 ⟹ INSIDE | Intersections mod 2 == 0 ⟹ OUTSIDE
+            </div>
+            <p>
+              <strong>🪤 The TS 23.032 Clause 5.3 Trap:</strong> 3GPP explicitly mandates that polygon vertices must be ordered <em>clockwise</em>. The interior is defined as the region to the <em>right</em> of the perimeter traversal. If a network operator inadvertently broadcasts vertices in counter-clockwise order, the standard defines the interior as the <strong>entire rest of the planet!</strong> The simulator's live winding toggle demonstrates this exact vulnerability.
+            </p>
+            <p style="margin-top: 1rem;">
+              📖 Read the complete deep dive note in Aman's knowledge base:
+              <a href="https://amanbh2.github.io/learning/#/5g-ran/51-ntn-geographic-cell-modeling" target="_blank" rel="noopener noreferrer" style="color: var(--cyan-primary); text-decoration: underline;">
+                5G RAN Note #51: NTN Geographic Cell Area Modeling & PIP Engine
+              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Entry Point -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
+

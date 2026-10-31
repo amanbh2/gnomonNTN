@@ -1,0 +1,12 @@
+{
+  "name": "gnomon-ntn",
+  "version": "1.0.0",
+  "description": "Interactive 3D/2D Satellite Cell Area Simulator conforming to 3GPP TS 23.032 & TS 38.331 SIB19",
+  "type": "module",
+  "scripts": {
+    "test": "node test/verify-pip.js"
+  },
+  "author": "Aman Bhaskar",
+  "license": "MIT"
+}
+
