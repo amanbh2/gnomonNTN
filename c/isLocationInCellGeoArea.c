@@ -255,6 +255,51 @@ static bool gnomonic_project(double latDeg, double lonDeg, double lat0Deg, doubl
  * Stage 4: Jordan Curve Ray-Casting & TS 23.032 Winding Order Verification
  * ============================================================================ */
 
+/**
+ * 3GPP TS 23.032 Clause 5.3 Boundary Condition:
+ * "Points on the boundary of the polygon are considered to be inside the polygon."
+ *
+ * Checks if point p lies on segment [a, b] within eps tolerance (in km).
+ */
+static inline bool is_point_on_segment(TangentPoint_t a, TangentPoint_t b, TangentPoint_t p, double eps) {
+    /* 1. Bounding box filter for segment [a, b] with epsilon padding */
+    double minX = (a.x < b.x) ? a.x : b.x;
+    double maxX = (a.x > b.x) ? a.x : b.x;
+    double minY = (a.y < b.y) ? a.y : b.y;
+    double maxY = (a.y > b.y) ? a.y : b.y;
+
+    if (p.x < minX - eps || p.x > maxX + eps ||
+        p.y < minY - eps || p.y > maxY + eps) {
+        return false;
+    }
+
+    /* 2. Orthogonal distance from p to line segment AB:
+     *    distance = |(b.x - a.x)*(p.y - a.y) - (b.y - a.y)*(p.x - a.x)| / length(AB)
+     */
+    double dx = b.x - a.x;
+    double dy = b.y - a.y;
+    double segLen = sqrt(dx * dx + dy * dy);
+    if (segLen < 1e-9) {
+        double d = sqrt((p.x - a.x) * (p.x - a.x) + (p.y - a.y) * (p.y - a.y));
+        return (d <= eps);
+    }
+
+    double cross = fabs(dx * (p.y - a.y) - dy * (p.x - a.x));
+    double distToLine = cross / segLen;
+    return (distToLine <= eps);
+}
+
+static bool is_point_on_polygon_boundary(const TangentPoint_t *poly, uint8_t n, TangentPoint_t p, double eps) {
+    for (uint8_t i = 0; i < n; i++) {
+        TangentPoint_t a = poly[i];
+        TangentPoint_t b = poly[(i + 1) % n];
+        if (is_point_on_segment(a, b, p, eps)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int jordan_ray_cast(const TangentPoint_t *poly, uint8_t n, TangentPoint_t p) {
     int crossings = 0;
     for (uint8_t i = 0; i < n; i++) {
@@ -349,6 +394,17 @@ bool isLocationInCellGeoArea(const CellPolygon_t *cellPolygon,
     /* 5. TS 23.032 Winding Order Verification */
     result->isClockwise = check_clockwise_winding(polyTangent, cellPolygon->numPoints);
 
+    /* 5b. Explicit 3GPP TS 23.032 Clause 5.3 Boundary Verification */
+    /* "Points on the boundary of the polygon are considered to be inside the polygon." */
+    /* 0.001 km tolerance = 1 meter physical resolution in tangent metric space */
+    if (is_point_on_polygon_boundary(polyTangent, cellPolygon->numPoints, ueTangent, 0.001)) {
+        result->isInside = true;
+        result->rayCrossings = 1;
+        snprintf(result->diagnosticMsg, sizeof(result->diagnosticMsg),
+                 "SUCCESS: Point lies ON BOUNDARY/VERTEX (INSIDE per TS 23.032 Clause 5.3)");
+        return true;
+    }
+
     /* 6. Jordan Curve Parity Ray-Casting */
     result->rayCrossings = jordan_ray_cast(polyTangent, cellPolygon->numPoints, ueTangent);
     bool parityInside = (result->rayCrossings % 2) == 1;
@@ -426,6 +482,20 @@ int main(void) {
     bool in3 = isLocationInCellGeoArea(&datelineBeam, &ueDateLine, &res3);
     printf("Test 3 (180° Date Line): Result=%s, Crossings=%d, Dist=%.2f km -> %s\n",
            in3 ? "INSIDE [PASS]" : "OUTSIDE [FAIL]", res3.rayCrossings, res3.distanceToCentroidKm, res3.diagnosticMsg);
+
+    /* Test Case 4: Point Exactly on a Vertex (56.00°N, 12.00°E) - TS 23.032 Clause 5.3 */
+    GeographicalCoordinates_t ueOnVertex = degrees_to_asn1(56.00, 12.00);
+    PipResult_t res4;
+    bool in4 = isLocationInCellGeoArea(&hexBeam, &ueOnVertex, &res4);
+    printf("Test 4 (On Vertex V0):   Result=%s, Dist=%.2f km -> %s\n",
+           in4 ? "INSIDE [PASS]" : "OUTSIDE [FAIL]", res4.distanceToCentroidKm, res4.diagnosticMsg);
+
+    /* Test Case 5: Point on Edge Midpoint between V1 and V2 (48.00°N, 23.50°E) - TS 23.032 Clause 5.3 */
+    GeographicalCoordinates_t ueOnEdge = degrees_to_asn1(48.00, 23.50);
+    PipResult_t res5;
+    bool in5 = isLocationInCellGeoArea(&hexBeam, &ueOnEdge, &res5);
+    printf("Test 5 (On Edge V1-V2):  Result=%s, Dist=%.2f km -> %s\n",
+           in5 ? "INSIDE [PASS]" : "OUTSIDE [FAIL]", res5.distanceToCentroidKm, res5.diagnosticMsg);
 
     printf("===================================================================\n");
     return 0;
