@@ -52,6 +52,31 @@ class AppController {
           (lat, lon) => this.onUeMoved(lat, lon),
           (index, lat, lon) => this.onVertexMoved(index, lat, lon)
         );
+
+        // Satellite Line-of-Sight state updates
+        this.globeView.onSatelliteLosChanged = (inLos) => {
+          const pill = document.getElementById('globe-mode-pill');
+          const losStatus = document.getElementById('satellite-los-status');
+          if (pill && !this.globeView.isTransparentMode) {
+            pill.textContent = inLos
+              ? 'LEO Satellite Conical Beam Active (LOS In View)'
+              : 'LEO Satellite Occulted (Behind Earth Horizon)';
+            pill.style.borderColor = inLos ? 'rgba(0, 242, 254, 0.4)' : 'rgba(255, 59, 48, 0.4)';
+          }
+          if (losStatus) {
+            if (inLos) {
+              losStatus.textContent = '📡 SATELLITE LOS: IN VIEW (Active Conical RF Beam)';
+              losStatus.style.color = 'var(--green-inside)';
+              losStatus.style.background = 'rgba(0, 230, 118, 0.08)';
+              losStatus.style.borderColor = 'rgba(0, 230, 118, 0.2)';
+            } else {
+              losStatus.textContent = '🌑 SATELLITE LOS: OCCLUDED (Behind Earth Horizon)';
+              losStatus.style.color = 'var(--red-outside)';
+              losStatus.style.background = 'rgba(255, 59, 48, 0.08)';
+              losStatus.style.borderColor = 'rgba(255, 59, 48, 0.2)';
+            }
+          }
+        };
       } catch (err) {
         console.error('Error initializing GlobeView:', err);
       }
@@ -392,6 +417,52 @@ class AppController {
     if (btnFocusCell) {
       btnFocusCell.addEventListener('click', () => {
         this.globeView.focusOnCell();
+      });
+    }
+
+    // Toggle 3D Transparent Geometry Mode button
+    const btnToggleTransparent = document.getElementById('btn-toggle-transparent');
+    if (btnToggleTransparent) {
+      btnToggleTransparent.addEventListener('click', () => {
+        if (!this.globeView) return;
+        const newState = !this.globeView.isTransparentMode;
+        this.globeView.setTransparentMode(newState);
+        btnToggleTransparent.classList.toggle('active', newState);
+        btnToggleTransparent.textContent = newState ? '👁️ Solid Mode' : '👁️ 3D Geometry Mode';
+        const pill = document.getElementById('globe-mode-pill');
+        if (pill) {
+          pill.textContent = newState
+            ? '🔬 Transparent Mode: Core Origin & Radial Slicing Wedges Active'
+            : (this.globeView.isSatelliteInLos ? 'LEO Satellite Conical Beam Active' : 'LEO Satellite Occulted (Behind Horizon)');
+        }
+      });
+    }
+
+    // Mobile Viewport Tabs Switcher
+    const tabBtnGlobe = document.getElementById('tab-btn-globe');
+    const tabBtnPlane = document.getElementById('tab-btn-plane');
+    const viewportGlobe = document.getElementById('viewport-globe');
+    const viewportPlane = document.getElementById('viewport-plane');
+
+    if (tabBtnGlobe && tabBtnPlane && viewportGlobe && viewportPlane) {
+      tabBtnGlobe.addEventListener('click', () => {
+        tabBtnGlobe.classList.add('active');
+        tabBtnPlane.classList.remove('active');
+        viewportGlobe.classList.remove('mobile-hidden');
+        viewportPlane.classList.add('mobile-hidden');
+        if (this.globeView) {
+          setTimeout(() => this.globeView.onResize(), 50);
+        }
+      });
+
+      tabBtnPlane.addEventListener('click', () => {
+        tabBtnPlane.classList.add('active');
+        tabBtnGlobe.classList.remove('active');
+        viewportPlane.classList.remove('mobile-hidden');
+        viewportGlobe.classList.add('mobile-hidden');
+        if (this.planeView) {
+          setTimeout(() => this.planeView.resize(), 50);
+        }
       });
     }
 

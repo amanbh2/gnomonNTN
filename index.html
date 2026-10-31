@@ -153,6 +153,16 @@
     </div>
   </section>
 
+  <!-- Mobile View Switcher Tabs (Visible on screens <= 820px) -->
+  <div class="mobile-view-tabs" id="mobile-view-tabs">
+    <button id="tab-btn-globe" class="mobile-tab-btn active" type="button">
+      🌐 3D Globe View
+    </button>
+    <button id="tab-btn-plane" class="mobile-tab-btn" type="button">
+      📐 2D Tangent Plane
+    </button>
+  </div>
+
   <!-- Synchronized Dual-View Main Split Screen -->
   <main class="main-workspace">
     <!-- Left Viewport: Interactive 3D Earth Globe (Three.js) -->
@@ -163,6 +173,7 @@
           <span>3D Geodesic Earth Globe</span>
         </div>
         <div class="viewport-actions">
+          <button id="btn-toggle-transparent" class="btn-tool" title="Toggle Transparent 3D Geometry Mode (Core Origin, Tangent Plane & Radial Slicing Wedges)">👁️ 3D Geometry Mode</button>
           <button id="btn-focus-cell" class="btn-tool" title="Smoothly center camera on satellite cell">🎯 Center Cell</button>
           <button id="btn-reset-globe" class="btn-tool" title="Reset 3D camera to default orbit position">⟲ Reset View</button>
         </div>
@@ -249,6 +260,9 @@
             <span class="slider"></span>
           </label>
         </div>
+      </div>
+      <div id="satellite-los-status" style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--green-inside); margin-top: 0.4rem; padding: 0.25rem 0.5rem; background: rgba(0, 230, 118, 0.08); border-radius: var(--radius-sm); border: 1px solid rgba(0, 230, 118, 0.2);">
+        📡 SATELLITE LOS: IN VIEW (Active Conical RF Beam)
       </div>
     </div>
 

@@ -37,11 +37,17 @@ export class GlobeView {
     this.satelliteGroup = null;
     this.satelliteBeam = null;
     this.orbitLine = null;
+    this.orbitalPlaneGroup = null;
     this.orbitRadius = 7.0;
     this.orbitAngle = 0.0;
     this.orbitSpeed = 0.003;
     this.isOrbiting = true;
     this.orbitInclination = 53.0; // degrees
+    this.isSatelliteInLos = true;
+    this.onSatelliteLosChanged = null;
+
+    this.isTransparentMode = false;
+    this.transparentGroup = null;
 
     this.geodesicLinesGroup = null;
     this.polygonSurfaceMesh = null;
@@ -112,6 +118,10 @@ export class GlobeView {
     this.vertexMarkersGroup = new THREE.Group();
     this.scene.add(this.vertexMarkersGroup);
 
+    this.transparentGroup = new THREE.Group();
+    this.transparentGroup.visible = false;
+    this.scene.add(this.transparentGroup);
+
     // Starfield
     this.buildStarfield();
 
@@ -180,8 +190,9 @@ export class GlobeView {
   }
 
   /**
-   * Generates a high-precision procedural Equirectangular Earth Texture
-   * with continent outlines, bathymetry, topography, and lat/lon graticules.
+   * Generates a high-precision digital Aerospace Graticule Earth Texture
+   * with razor-sharp lat/lon parallels, meridians, highlighted Equator,
+   * Prime Meridian, and Antimeridian date line with monospace telemetry stamps.
    */
   generateEarthTexture() {
     const canvas = document.createElement('canvas');
@@ -189,95 +200,39 @@ export class GlobeView {
     canvas.height = 1024;
     const ctx = canvas.getContext('2d');
 
-    // 1. Ocean base gradient
-    const oceanGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    oceanGrad.addColorStop(0, '#040b17');
-    oceanGrad.addColorStop(0.3, '#07162c');
-    oceanGrad.addColorStop(0.5, '#0a1d38');
-    oceanGrad.addColorStop(0.7, '#07162c');
-    oceanGrad.addColorStop(1, '#040b17');
-    ctx.fillStyle = oceanGrad;
+    // 1. Sleek Obsidian Midnight Space Background
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bgGrad.addColorStop(0, '#050914');
+    bgGrad.addColorStop(0.3, '#070D1E');
+    bgGrad.addColorStop(0.5, '#0A1329');
+    bgGrad.addColorStop(0.7, '#070D1E');
+    bgGrad.addColorStop(1, '#050914');
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Helper: convert lon [-180, 180] and lat [-90, 90] to canvas pixels
-    const toPx = (lon, lat) => ({
-      x: ((lon + 180) / 360) * canvas.width,
-      y: ((90 - lat) / 180) * canvas.height
-    });
+    // 2. Fine Coordinate Grid: Minor Graticules (every 5° lat, every 10° lon)
+    ctx.lineWidth = 0.5;
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.06)';
 
-    // 2. Draw Vector Landmasses
-    ctx.fillStyle = '#17324f';
-    ctx.strokeStyle = '#2d5885';
-    ctx.lineWidth = 1.5;
-
-    const drawPolygon = (coords) => {
+    for (let lon = -180; lon <= 180; lon += 10) {
+      const x = ((lon + 180) / 360) * canvas.width;
       ctx.beginPath();
-      for (let i = 0; i < coords.length; i++) {
-        const pt = toPx(coords[i][0], coords[i][1]);
-        if (i === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      }
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
       ctx.stroke();
-    };
+    }
 
-    // Continents simplified high-level polygonal footprints
-    // Africa
-    drawPolygon([
-      [-17, 30], [-13, 34], [-5, 36], [10, 37], [25, 32], [32, 31],
-      [35, 27], [43, 12], [51, 11], [45, 2], [41, -5], [35, -20],
-      [28, -32], [18, -34], [12, -20], [10, -5], [0, 5], [-15, 12], [-17, 21]
-    ]);
+    for (let lat = -80; lat <= 80; lat += 5) {
+      const y = ((90 - lat) / 180) * canvas.height;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
 
-    // Eurasia
-    drawPolygon([
-      [-9, 36], [-9, 43], [2, 51], [5, 62], [15, 68], [28, 70], [60, 68],
-      [100, 75], [140, 72], [170, 65], [160, 55], [140, 50], [130, 42],
-      [122, 30], [108, 22], [103, 10], [98, 12], [88, 22], [76, 8],
-      [68, 24], [50, 26], [35, 36], [26, 40], [15, 45], [0, 48], [-5, 36]
-    ]);
-
-    // Great Britain & Scandinavia
-    drawPolygon([[-5, 50], [-2, 58], [2, 58], [0, 51]]);
-    drawPolygon([[5, 58], [15, 56], [25, 71], [15, 70]]);
-
-    // North America
-    drawPolygon([
-      [-168, 65], [-160, 71], [-130, 70], [-100, 70], [-80, 60], [-65, 46],
-      [-75, 35], [-80, 25], [-97, 20], [-105, 25], [-120, 35], [-125, 48],
-      [-140, 60], [-165, 60]
-    ]);
-
-    // Greenland
-    drawPolygon([[-50, 60], [-20, 70], [-25, 82], [-55, 82], [-50, 70]]);
-
-    // South America
-    drawPolygon([
-      [-76, 12], [-60, 10], [-45, 0], [-35, -5], [-40, -22], [-50, -35],
-      [-65, -54], [-75, -50], [-72, -35], [-76, -15], [-80, -2]
-    ]);
-
-    // Australia
-    drawPolygon([
-      [114, -22], [125, -14], [138, -12], [146, -18], [152, -28],
-      [148, -38], [136, -35], [118, -34], [113, -28]
-    ]);
-
-    // Antarctica
-    drawPolygon([
-      [-180, -70], [-100, -72], [0, -70], [100, -70], [180, -70],
-      [180, -90], [-180, -90]
-    ]);
-
-    // Japan, Philippines, Indonesia
-    drawPolygon([[130, 31], [140, 40], [142, 45], [138, 36]]);
-    drawPolygon([[120, 15], [126, 8], [122, 5]]);
-    drawPolygon([[95, 5], [110, -5], [118, -8], [105, 0]]);
-
-    // 3. Latitude & Longitude Graticules
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(0, 242, 254, 0.12)';
+    // 3. Standard Graticules (every 15° lat, every 30° lon)
+    ctx.lineWidth = 1.0;
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.18)';
 
     // Longitude lines every 30 degrees
     for (let lon = -180; lon <= 180; lon += 30) {
@@ -297,31 +252,110 @@ export class GlobeView {
       ctx.stroke();
     }
 
-    // Equator (Prominent)
-    ctx.lineWidth = 2.0;
-    ctx.strokeStyle = 'rgba(0, 242, 254, 0.35)';
+    // 4. Tropics (±23.5°) & Polar Circles (±66.5°)
+    ctx.lineWidth = 1.0;
+    ctx.setLineDash([8, 6]);
+    ctx.strokeStyle = 'rgba(255, 184, 0, 0.25)';
+    [-66.5, -23.5, 23.5, 66.5].forEach(lat => {
+      const y = ((90 - lat) / 180) * canvas.height;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]); // Reset line dash
+
+    // 5. Equator (0° Latitude) — Vivid Glowing Cyan
     const eqY = canvas.height * 0.5;
+    ctx.lineWidth = 4.0;
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.2)';
     ctx.beginPath();
     ctx.moveTo(0, eqY);
     ctx.lineTo(canvas.width, eqY);
     ctx.stroke();
 
-    // Prime Meridian & Antimeridian (Prominent)
     ctx.lineWidth = 2.0;
-    ctx.strokeStyle = 'rgba(255, 184, 0, 0.35)';
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(0, eqY);
+    ctx.lineTo(canvas.width, eqY);
+    ctx.stroke();
+
+    // 6. Prime Meridian (0° Longitude) — Vivid Glowing Cyan
     const pmX = canvas.width * 0.5;
+    ctx.lineWidth = 4.0;
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.2)';
     ctx.beginPath();
     ctx.moveTo(pmX, 0);
     ctx.lineTo(pmX, canvas.height);
     ctx.stroke();
 
-    // Text labels for reference
-    ctx.font = '20px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(0, 242, 254, 0.4)';
-    ctx.fillText('0° EQUATOR', 30, eqY - 8);
-    ctx.fillStyle = 'rgba(255, 184, 0, 0.45)';
-    ctx.fillText('0° PRIME MERIDIAN', pmX + 10, 40);
-    ctx.fillText('±180° ANTIMERIDIAN', 20, 40);
+    ctx.lineWidth = 2.0;
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(pmX, 0);
+    ctx.lineTo(pmX, canvas.height);
+    ctx.stroke();
+
+    // 7. Antimeridian (±180° Longitude) — Electric Amber Highlight
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(255, 184, 0, 0.85)';
+    ctx.setLineDash([12, 6]);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, canvas.height);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(canvas.width - 1, 0);
+    ctx.lineTo(canvas.width - 1, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 8. Grid Intersection Crosshairs
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.5)';
+    for (let lon = -150; lon <= 150; lon += 30) {
+      const x = ((lon + 180) / 360) * canvas.width;
+      for (let lat = -60; lat <= 60; lat += 30) {
+        if (lat === 0 && lon === 0) continue;
+        const y = ((90 - lat) / 180) * canvas.height;
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y);
+        ctx.lineTo(x + 5, y);
+        ctx.moveTo(x, y - 5);
+        ctx.lineTo(x, y + 5);
+        ctx.stroke();
+      }
+    }
+
+    // 9. Crisp Aerospace Monospace Coordinate Labels
+    ctx.font = 'bold 15px "JetBrains Mono", monospace';
+
+    // Latitude labels stamped across multiple meridians around the entire globe
+    const labelLons = [-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150];
+    for (const lon of labelLons) {
+      const x = ((lon + 180) / 360) * canvas.width;
+      for (let lat = -75; lat <= 75; lat += 15) {
+        if (lat === 0) continue;
+        const y = ((90 - lat) / 180) * canvas.height;
+        const label = lat > 0 ? `${lat}°N` : `${Math.abs(lat)}°S`;
+        ctx.fillStyle = lon === 0 ? 'rgba(0, 242, 254, 0.95)' : 'rgba(0, 242, 254, 0.65)';
+        ctx.fillText(label, x + 6, y - 4);
+      }
+    }
+
+    // Equator labels along longitudes
+    for (let lon = -150; lon <= 150; lon += 30) {
+      const x = ((lon + 180) / 360) * canvas.width;
+      const label = lon === 0 ? '0° (PM)' : (lon > 0 ? `${lon}°E` : `${Math.abs(lon)}°W`);
+      ctx.fillStyle = lon === 0 ? 'rgba(0, 242, 254, 0.95)' : 'rgba(0, 242, 254, 0.65)';
+      ctx.fillText(label, x + 6, eqY - 8);
+    }
+
+    // Antimeridian labels
+    ctx.fillStyle = 'rgba(255, 184, 0, 0.95)';
+    ctx.fillText('180° ANTIMERIDIAN / DATE LINE', 20, 36);
+    ctx.fillText('0° EQUATOR', pmX + 10, eqY - 8);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping;
@@ -333,16 +367,83 @@ export class GlobeView {
     const geometry = new THREE.SphereGeometry(this.earthRadius, 64, 64);
     const earthTexture = this.generateEarthTexture();
 
-    const material = new THREE.MeshStandardMaterial({
+    // 1. Translucent Surface Skin (pure lat/lon graticules, no diagonal tessellation)
+    const material = new THREE.MeshBasicMaterial({
       map: earthTexture,
-      roughness: 0.7,
-      metalness: 0.15,
-      emissive: new THREE.Color(0x030814),
-      emissiveIntensity: 0.3
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+      side: THREE.DoubleSide
     });
 
     this.earthMesh = new THREE.Mesh(geometry, material);
     this.scene.add(this.earthMesh);
+
+    // 2. Physical 3D Latitude Parallels & Longitude Meridian Rings (Zero angular diagonal lines)
+    this.buildProminent3DRings();
+  }
+
+  buildProminent3DRings() {
+    this.ringsGroup = new THREE.Group();
+    const R = this.earthRadius * 1.002;
+
+    // 1. True Latitude parallel circles every 15 degrees (-75° to +75°)
+    for (let lat = -75; lat <= 75; lat += 15) {
+      const phi = lat * DEG_TO_RAD;
+      const y = R * Math.sin(phi);
+      const r = R * Math.cos(phi);
+
+      const pts = [];
+      const segments = 64;
+      for (let s = 0; s <= segments; s++) {
+        const theta = (s / segments) * Math.PI * 2;
+        pts.push(new THREE.Vector3(r * Math.sin(theta), y, r * Math.cos(theta)));
+      }
+
+      const isEquator = lat === 0;
+      const ringGeom = new THREE.BufferGeometry().setFromPoints(pts);
+      const ringMat = new THREE.LineBasicMaterial({
+        color: 0x00F2FE,
+        transparent: true,
+        opacity: isEquator ? 0.85 : 0.35,
+        linewidth: isEquator ? 2 : 1
+      });
+      const ringLine = new THREE.Line(ringGeom, ringMat);
+      this.ringsGroup.add(ringLine);
+    }
+
+    // 2. True Longitude meridian semicircles every 30 degrees (0° to 330°)
+    for (let lon = 0; lon < 360; lon += 30) {
+      const lam = lon * DEG_TO_RAD;
+      const pts = [];
+      const segments = 48;
+      // Semicircle from South pole (-90°) to North pole (+90°)
+      for (let s = 0; s <= segments; s++) {
+        const phi = (-90 + (s / segments) * 180) * DEG_TO_RAD;
+        pts.push(new THREE.Vector3(
+          R * Math.cos(phi) * Math.sin(lam),
+          R * Math.sin(phi),
+          R * Math.cos(phi) * Math.cos(lam)
+        ));
+      }
+
+      const isPrime = lon === 0;
+      const isAntimeridian = lon === 180;
+      const color = isAntimeridian ? 0xFFB800 : 0x00F2FE;
+      const opacity = (isPrime || isAntimeridian) ? 0.85 : 0.30;
+
+      const ringGeom = new THREE.BufferGeometry().setFromPoints(pts);
+      const ringMat = new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        linewidth: (isPrime || isAntimeridian) ? 2 : 1
+      });
+      const ringLine = new THREE.Line(ringGeom, ringMat);
+      this.ringsGroup.add(ringLine);
+    }
+
+    this.scene.add(this.ringsGroup);
   }
 
   buildAtmosphere() {
@@ -360,7 +461,12 @@ export class GlobeView {
   }
 
   buildSatelliteAndOrbit() {
-    // 1. Orbit Path Ring
+    // 1. Orbital Plane Group tilted by inclination
+    this.orbitalPlaneGroup = new THREE.Group();
+    this.orbitalPlaneGroup.rotation.x = this.orbitInclination * DEG_TO_RAD;
+    this.scene.add(this.orbitalPlaneGroup);
+
+    // 2. Orbit Path Ring
     const orbitRadius = this.earthRadius * 1.45;
     this.orbitRadius = orbitRadius;
 
@@ -384,12 +490,9 @@ export class GlobeView {
     });
     this.orbitLine = new THREE.Line(orbitGeom, orbitMat);
     this.orbitLine.computeLineDistances();
+    this.orbitalPlaneGroup.add(this.orbitLine);
 
-    // Tilt orbit according to inclination
-    this.orbitLine.rotation.x = this.orbitInclination * DEG_TO_RAD;
-    this.scene.add(this.orbitLine);
-
-    // 2. Satellite Group
+    // 3. Satellite Group (positioned on orbital plane)
     this.satelliteGroup = new THREE.Group();
 
     // Satellite Main Body Bus
@@ -429,9 +532,9 @@ export class GlobeView {
     dish.rotation.x = Math.PI;
     this.satelliteGroup.add(dish);
 
-    this.scene.add(this.satelliteGroup);
+    this.orbitalPlaneGroup.add(this.satelliteGroup);
 
-    // 3. Dynamic 3D Conical Beam
+    // 4. Dynamic 3D Conical Beam in world space
     const beamGeom = new THREE.ConeGeometry(1.0, 1.0, 32, 1, true);
     beamGeom.translate(0, -0.5, 0); // Origin at apex
     const beamMat = new THREE.MeshBasicMaterial({
@@ -449,37 +552,30 @@ export class GlobeView {
   buildCentroidBeacon() {
     this.centroidGroup = new THREE.Group();
 
-    // Central amber sphere
-    const sphereGeom = new THREE.SphereGeometry(0.14, 20, 20);
-    const sphereMat = new THREE.MeshStandardMaterial({
-      color: 0xFFB800,
-      emissive: 0xFF9900,
-      emissiveIntensity: 0.9,
-      metalness: 0.8,
-      roughness: 0.2
-    });
-    const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-    this.centroidGroup.add(sphere);
-
-    // Pulsing ring
-    const ringGeom = new THREE.RingGeometry(0.18, 0.26, 32);
-    const ringMat = new THREE.MeshBasicMaterial({
+    // Small crisp amber center dot matching 2D plane view (no outer ring)
+    const dotGeom = new THREE.CircleGeometry(0.065, 24);
+    const dotMat = new THREE.MeshBasicMaterial({
       color: 0xFFB800,
       side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.85
+      depthWrite: false
     });
-    this.centroidRing = new THREE.Mesh(ringGeom, ringMat);
-    this.centroidGroup.add(this.centroidRing);
+    const dot = new THREE.Mesh(dotGeom, dotMat);
+    this.centroidGroup.add(dot);
 
-    // Vertical beacon beam pointing outward into space
-    const lineGeom = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, 0.9)
+    // Subtle amber crosshairs matching 2D plane view
+    const s = 0.12;
+    const crossGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-s, 0, 0.005), new THREE.Vector3(s, 0, 0.005),
+      new THREE.Vector3(0, -s, 0.005), new THREE.Vector3(0, s, 0.005)
     ]);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xFFB800, transparent: true, opacity: 0.85, linewidth: 2 });
-    const line = new THREE.Line(lineGeom, lineMat);
-    this.centroidGroup.add(line);
+    const crossMat = new THREE.LineBasicMaterial({
+      color: 0xFFB800,
+      transparent: true,
+      opacity: 0.9,
+      linewidth: 1.5
+    });
+    const cross = new THREE.LineSegments(crossGeom, crossMat);
+    this.centroidGroup.add(cross);
 
     this.scene.add(this.centroidGroup);
   }
@@ -487,44 +583,32 @@ export class GlobeView {
   buildUeMarker() {
     this.ueMarkerGroup = new THREE.Group();
 
-    // Core sphere (green when inside, red when outside)
-    const sphereGeom = new THREE.SphereGeometry(0.18, 24, 24);
-    this.ueSphereMat = new THREE.MeshStandardMaterial({
-      color: 0x00E676,
-      emissive: 0x00B359,
-      emissiveIntensity: 0.8,
-      metalness: 0.7,
-      roughness: 0.2
-    });
-    this.ueSphere = new THREE.Mesh(sphereGeom, this.ueSphereMat);
-    this.ueMarkerGroup.add(this.ueSphere);
-
-    // Outer target radar ring
-    const ringGeom = new THREE.RingGeometry(0.26, 0.36, 36);
-    this.ueRingMat = new THREE.MeshBasicMaterial({
+    // Small crisp solid UE dot matching 2D plane view (no outer concentric ring)
+    const discGeom = new THREE.CircleGeometry(0.08, 24);
+    this.ueDiscMat = new THREE.MeshBasicMaterial({
       color: 0x00E676,
       side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.85
+      depthWrite: false
     });
-    this.ueRing = new THREE.Mesh(ringGeom, this.ueRingMat);
-    this.ueMarkerGroup.add(this.ueRing);
+    this.ueDisc = new THREE.Mesh(discGeom, this.ueDiscMat);
+    this.ueMarkerGroup.add(this.ueDisc);
 
-    // Telemetry Pin vertical stem
-    const stemGeom = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, 1.1)
-    ]);
-    this.ueStemMat = new THREE.LineBasicMaterial({ color: 0x00E676, linewidth: 3 });
-    this.ueStem = new THREE.Line(stemGeom, this.ueStemMat);
-    this.ueMarkerGroup.add(this.ueStem);
+    // Center white pinpoint
+    const pipGeom = new THREE.CircleGeometry(0.028, 16);
+    const pipMat = new THREE.MeshBasicMaterial({
+      color: 0xFFFFFF,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const pip = new THREE.Mesh(pipGeom, pipMat);
+    pip.position.z = 0.005;
+    this.ueMarkerGroup.add(pip);
 
-    // Top pin tip beacon
-    const tipGeom = new THREE.SphereGeometry(0.07, 16, 16);
-    this.ueTipMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-    const tip = new THREE.Mesh(tipGeom, this.ueTipMat);
-    tip.position.set(0, 0, 1.1);
-    this.ueMarkerGroup.add(tip);
+    // Invisible hit-test disc for smooth pointer drag interaction
+    const hitGeom = new THREE.CircleGeometry(0.35, 16);
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+    this.ueHitDisc = new THREE.Mesh(hitGeom, hitMat);
+    this.ueMarkerGroup.add(this.ueHitDisc);
 
     this.scene.add(this.ueMarkerGroup);
   }
@@ -579,12 +663,16 @@ export class GlobeView {
     this.ueMarkerGroup.lookAt(uePos.clone().multiplyScalar(2.0));
 
     const color = evalData.finalDecision ? 0x00E676 : 0xFF3B30;
-    this.ueSphereMat.color.setHex(color);
-    this.ueRingMat.color.setHex(color);
-    this.ueStemMat.color.setHex(color);
+    if (this.ueRingMat) this.ueRingMat.color.setHex(color);
+    if (this.ueDiscMat) this.ueDiscMat.color.setHex(color);
 
     // 6. Update Satellite Beam to target the cell Centroid
     this.updateSatelliteBeam(cPos);
+
+    // 7. Update 3D Transparent Geometry Mode
+    if (this.isTransparentMode) {
+      this.renderTransparentGeometry(evalData.vertices, evalData.centroid);
+    }
   }
 
   renderGeodesicPolygon(vertices) {
@@ -618,9 +706,9 @@ export class GlobeView {
     const numPoints = points.length;
     if (numPoints < 3) return;
 
-    // 1. Build Prominent Glowing Geodesic Ribbon Mesh on Sphere Surface
+    // 1. Build Sleek Geodesic Ribbon Mesh on Sphere Surface (Low weight, matching 2D view)
     // Surface normal N, Tangent T along geodesic, Binormal B = N x T
-    const ribbonHalfWidth = 0.055; // ~70 km ribbon width on Earth scale
+    const ribbonHalfWidth = 0.012; // ~15 km ribbon width on Earth scale (sleek, not crowding cell)
     const ribbonPositions = [];
     const ribbonNormals = [];
 
@@ -663,7 +751,7 @@ export class GlobeView {
       color: 0x00F2FE,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.85
+      opacity: 0.9
     });
     const ribbonMesh = new THREE.Mesh(ribbonGeom, ribbonMat);
     this.geodesicLinesGroup.add(ribbonMesh);
@@ -692,7 +780,7 @@ export class GlobeView {
     if (n < 3) return;
 
     // Create curved fan surface from centroid hugging spherical curvature
-    const cPos = this.latLonToSpherePos(centroid.lat, centroid.lon, 0.025);
+    const cPos = this.latLonToSpherePos(centroid.lat, centroid.lon, 0.02);
     const subSegments = 16;
     const positions = [];
 
@@ -709,8 +797,8 @@ export class GlobeView {
         const uA = slerp(u1, u2, tA);
         const uB = slerp(u1, u2, tB);
 
-        const posA = this.latLonToSpherePos(unitVectorToLatLon(uA).lat, unitVectorToLatLon(uA).lon, 0.025);
-        const posB = this.latLonToSpherePos(unitVectorToLatLon(uB).lat, unitVectorToLatLon(uB).lon, 0.025);
+        const posA = this.latLonToSpherePos(unitVectorToLatLon(uA).lat, unitVectorToLatLon(uA).lon, 0.02);
+        const posB = this.latLonToSpherePos(unitVectorToLatLon(uB).lat, unitVectorToLatLon(uB).lon, 0.02);
 
         // Triangle fan: Centroid, posA, posB
         positions.push(cPos.x, cPos.y, cPos.z);
@@ -726,7 +814,7 @@ export class GlobeView {
     const mat = new THREE.MeshBasicMaterial({
       color: 0x00F2FE,
       transparent: true,
-      opacity: 0.28,
+      opacity: 0.12,
       side: THREE.DoubleSide,
       depthWrite: false
     });
@@ -743,37 +831,78 @@ export class GlobeView {
     }
 
     vertices.forEach((v, idx) => {
-      const pos = this.latLonToSpherePos(v.lat, v.lon, 0.06);
+      const pos = this.latLonToSpherePos(v.lat, v.lon, 0.045);
 
-      // Outer cyan sphere
-      const geom = new THREE.SphereGeometry(0.14, 20, 20);
-      const mat = new THREE.MeshStandardMaterial({
+      const vGroup = new THREE.Group();
+      vGroup.position.copy(pos);
+      vGroup.lookAt(pos.clone().multiplyScalar(2.0));
+      vGroup.userData = { vertexIndex: idx };
+
+      // Single crisp solid cyan dot matching 2D plane view (no outer ring)
+      const coreGeom = new THREE.CircleGeometry(0.065, 24);
+      const coreMat = new THREE.MeshBasicMaterial({
         color: 0x00F2FE,
-        emissive: 0x00B8D9,
-        emissiveIntensity: 0.8,
-        metalness: 0.6,
-        roughness: 0.2
+        side: THREE.DoubleSide,
+        depthWrite: false
       });
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.copy(pos);
-      mesh.userData = { vertexIndex: idx };
+      const coreMesh = new THREE.Mesh(coreGeom, coreMat);
+      coreMesh.userData = { vertexIndex: idx };
+      vGroup.add(coreMesh);
 
-      // Inner white core
-      const innerGeom = new THREE.SphereGeometry(0.07, 12, 12);
-      const innerMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-      const inner = new THREE.Mesh(innerGeom, innerMat);
-      mesh.add(inner);
+      // Tiny white center pin
+      const pinGeom = new THREE.CircleGeometry(0.024, 16);
+      const pinMat = new THREE.MeshBasicMaterial({
+        color: 0xFFFFFF,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+      const pinMesh = new THREE.Mesh(pinGeom, pinMat);
+      pinMesh.position.z = 0.005;
+      pinMesh.userData = { vertexIndex: idx };
+      vGroup.add(pinMesh);
 
-      this.vertexMarkersGroup.add(mesh);
+      // Invisible hit-test disc for smooth pointer drag interaction
+      const hitGeom = new THREE.CircleGeometry(0.35, 16);
+      const hitMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+      const hitMesh = new THREE.Mesh(hitGeom, hitMat);
+      hitMesh.userData = { vertexIndex: idx };
+      vGroup.add(hitMesh);
+
+      this.vertexMarkersGroup.add(vGroup);
     });
   }
 
-  updateSatelliteBeam(targetPos) {
-    if (!this.satelliteGroup || !this.satelliteBeam) return;
+  updateSatelliteBeam(targetPos, satWorldPos) {
+    if (!this.satelliteGroup || !this.satelliteBeam || !targetPos) return;
 
-    const satPos = this.satelliteGroup.position;
-    const dir = new THREE.Vector3().subVectors(targetPos, satPos);
-    const dist = dir.length();
+    const satPos = satWorldPos || new THREE.Vector3();
+    if (!satWorldPos) {
+      this.satelliteGroup.getWorldPosition(satPos);
+    }
+
+    // Centroid normal vector on Earth's surface (pointing out to space)
+    const cNormal = targetPos.clone().normalize();
+    // Direction from centroid to satellite
+    const toSatellite = new THREE.Vector3().subVectors(satPos, targetPos);
+    // Horizon elevation check: dot product with surface normal
+    // If <= 0, the satellite is below the cell centroid's tangent horizon (occluded by Earth!)
+    const losDot = toSatellite.dot(cNormal);
+    const isInLos = losDot > 0.05;
+
+    if (this.isSatelliteInLos !== isInLos) {
+      this.isSatelliteInLos = isInLos;
+      if (typeof this.onSatelliteLosChanged === 'function') {
+        this.onSatelliteLosChanged(isInLos);
+      }
+    }
+
+    if (!isInLos) {
+      this.satelliteBeam.visible = false;
+      return;
+    }
+
+    this.satelliteBeam.visible = true;
+    const dist = toSatellite.length();
 
     // Scale beam height to distance, width to cover regional macro beam footprint (~2.4 units radius)
     this.satelliteBeam.position.copy(satPos);
@@ -781,7 +910,226 @@ export class GlobeView {
 
     // Orient cone towards centroid
     const up = new THREE.Vector3(0, 1, 0);
-    this.satelliteBeam.quaternion.setFromUnitVectors(up, dir.clone().normalize().negate());
+    const dir = new THREE.Vector3().subVectors(targetPos, satPos).normalize().negate();
+    this.satelliteBeam.quaternion.setFromUnitVectors(up, dir);
+  }
+
+  setTransparentMode(enabled) {
+    this.isTransparentMode = enabled;
+    if (this.earthMesh) {
+      if (enabled) {
+        this.earthMesh.material.opacity = 0.12;
+        if (this.atmosphereMesh) this.atmosphereMesh.visible = false;
+        if (this.transparentGroup) this.transparentGroup.visible = true;
+      } else {
+        this.earthMesh.material.opacity = 0.38;
+        if (this.atmosphereMesh) this.atmosphereMesh.visible = true;
+        if (this.transparentGroup) this.transparentGroup.visible = false;
+      }
+    }
+    // Re-render transparent geometry with current data
+    if (enabled && this.currentData) {
+      this.renderTransparentGeometry(this.currentData.vertices, this.currentData.centroid);
+    }
+  }
+
+  renderTransparentGeometry(vertices, centroid) {
+    if (!this.transparentGroup) return;
+
+    // Clear existing transparent meshes
+    while (this.transparentGroup.children.length > 0) {
+      const child = this.transparentGroup.children[0];
+      if (child.geometry) child.geometry.dispose();
+      this.transparentGroup.remove(child);
+    }
+
+    if (!vertices || vertices.length < 3 || !centroid) return;
+
+    // 1. Earth Core Origin Beacon at (0, 0, 0)
+    const coreOriginGroup = new THREE.Group();
+
+    // Bold Core sphere
+    const coreGeom = new THREE.SphereGeometry(0.18, 16, 16);
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xFFB800 });
+    const coreSphere = new THREE.Mesh(coreGeom, coreMat);
+    coreOriginGroup.add(coreSphere);
+
+    // Glowing wireframe aura
+    const auraGeom = new THREE.SphereGeometry(0.32, 12, 12);
+    const auraMat = new THREE.MeshBasicMaterial({
+      color: 0x00F2FE,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.5
+    });
+    const auraSphere = new THREE.Mesh(auraGeom, auraMat);
+    coreOriginGroup.add(auraSphere);
+
+    this.transparentGroup.add(coreOriginGroup);
+
+    // 2. Exact Centroid Tangent Normal and Position in Three.js Scene Coordinates
+    const R = this.earthRadius;
+    const cPos = this.latLonToSpherePos(centroid.lat, centroid.lon, 0.0);
+    const cNormal = cPos.clone().normalize();
+
+    // Compute Projected Points pTan on the Tangent Plane in Three.js Coordinates
+    const n = vertices.length;
+    const pTanList = [];
+
+    for (let i = 0; i < n; i++) {
+      const v = vertices[i];
+      // 3D position on sphere surface in Three.js coordinates
+      const posSph = this.latLonToSpherePos(v.lat, v.lon, 0.0);
+      const uDir = posSph.clone().normalize();
+
+      // Cosine of central angle c between vertex ray and centroid normal
+      const cosC = uDir.dot(cNormal);
+
+      // In Gnomonic projection, distance from origin (0,0,0) to tangent plane along uDir:
+      // dist = R / cos(c)
+      const dist = cosC > 0.02 ? (R / cosC) : (R * 2.0);
+      const pTan = uDir.clone().multiplyScalar(dist);
+      pTanList.push(pTan);
+    }
+
+    // Determine required size of the flat Tangent Plane Sheet
+    let maxDistFromCentroid = 2.0;
+    for (const pt of pTanList) {
+      const d = pt.distanceTo(cPos);
+      if (d > maxDistFromCentroid) maxDistFromCentroid = d;
+    }
+    const planeSize = Math.min(24.0, Math.max(5.5, maxDistFromCentroid * 2.3));
+
+    // Create Flat Tangent Plane Sheet at Centroid
+    const planeGeom = new THREE.PlaneGeometry(planeSize, planeSize);
+    const planeFillMat = new THREE.MeshBasicMaterial({
+      color: 0x002B49,
+      transparent: true,
+      opacity: 0.32,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const planeMesh = new THREE.Mesh(planeGeom, planeFillMat);
+
+    // Orthogonal grid lines on the tangent plane sheet (East/West and North/South lines only, no diagonal cuts)
+    const gridPts = [];
+    const halfSize = planeSize / 2;
+    const gridDivs = 10;
+    const step = planeSize / gridDivs;
+    for (let i = -halfSize; i <= halfSize + 0.001; i += step) {
+      // Lines parallel to local X (East)
+      gridPts.push(new THREE.Vector3(-halfSize, i, 0.002));
+      gridPts.push(new THREE.Vector3(halfSize, i, 0.002));
+      // Lines parallel to local Y (North)
+      gridPts.push(new THREE.Vector3(i, -halfSize, 0.002));
+      gridPts.push(new THREE.Vector3(i, halfSize, 0.002));
+    }
+    const gridGeom = new THREE.BufferGeometry().setFromPoints(gridPts);
+    const gridMat = new THREE.LineBasicMaterial({
+      color: 0x00F2FE,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false
+    });
+    const gridLines = new THREE.LineSegments(gridGeom, gridMat);
+    planeMesh.add(gridLines);
+
+    // Position and orient tangent plane to touch centroid surface
+    planeMesh.position.copy(cPos);
+    planeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), cNormal);
+    this.transparentGroup.add(planeMesh);
+
+    // Local Tangent Coordinate Axes (+X East, +Y North) in Three.js space
+    let eastVec;
+    if (Math.abs(cNormal.y) > 0.999) {
+      eastVec = new THREE.Vector3(1, 0, 0);
+    } else {
+      eastVec = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), cNormal).normalize();
+    }
+    const northVec = new THREE.Vector3().crossVectors(cNormal, eastVec).normalize();
+
+    const axisLen = planeSize * 0.45;
+    const axesGeom = new THREE.BufferGeometry().setFromPoints([
+      cPos.clone().addScaledVector(eastVec, -axisLen),
+      cPos.clone().addScaledVector(eastVec, axisLen),
+      cPos.clone().addScaledVector(northVec, -axisLen),
+      cPos.clone().addScaledVector(northVec, axisLen)
+    ]);
+    const axesMat = new THREE.LineBasicMaterial({
+      color: 0xFFB800,
+      transparent: true,
+      opacity: 0.85,
+      linewidth: 2
+    });
+    const axesLines = new THREE.LineSegments(axesGeom, axesMat);
+    this.transparentGroup.add(axesLines);
+
+    // 3. Radial Great-Circle Slicing Wedges from Core (0,0,0)
+    const wedgeMat = new THREE.MeshBasicMaterial({
+      color: 0x00F2FE,
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+
+    const edgeLinePts = [];
+    const rayLinePts = [];
+    const pCore = new THREE.Vector3(0, 0, 0);
+
+    for (let i = 0; i < n; i++) {
+      const nextIdx = (i + 1) % n;
+      const pTanA = pTanList[i];
+      const pTanB = pTanList[nextIdx];
+
+      // Slicing triangle from Core (0,0,0) to tangent points: Core -> TanA -> TanB
+      const wedgeGeom = new THREE.BufferGeometry();
+      const positions = new Float32Array([
+        pCore.x, pCore.y, pCore.z,
+        pTanA.x, pTanA.y, pTanA.z,
+        pTanB.x, pTanB.y, pTanB.z
+      ]);
+      wedgeGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      wedgeGeom.computeVertexNormals();
+
+      const wedgeMesh = new THREE.Mesh(wedgeGeom, wedgeMat);
+      this.transparentGroup.add(wedgeMesh);
+
+      // Straight projected line on tangent plane from TanA to TanB
+      edgeLinePts.push(pTanA, pTanB);
+
+      // Radial projection ray from Core through Vertex to Tangent Point
+      rayLinePts.push(pCore, pTanA);
+    }
+
+    // Bold projected straight edges on the tangent plane sheet
+    if (edgeLinePts.length > 0) {
+      const edgeLineGeom = new THREE.BufferGeometry().setFromPoints(edgeLinePts);
+      const edgeLineMat = new THREE.LineBasicMaterial({
+        color: 0x00F2FE,
+        linewidth: 4,
+        transparent: true,
+        opacity: 0.98
+      });
+      const edgeLines = new THREE.LineSegments(edgeLineGeom, edgeLineMat);
+      this.transparentGroup.add(edgeLines);
+    }
+
+    // Radial projection rays from Core through vertices to tangent plane
+    if (rayLinePts.length > 0) {
+      const rayLineGeom = new THREE.BufferGeometry().setFromPoints(rayLinePts);
+      const rayLineMat = new THREE.LineDashedMaterial({
+        color: 0xFFB800,
+        dashSize: 0.3,
+        gapSize: 0.2,
+        transparent: true,
+        opacity: 0.75
+      });
+      const rayLines = new THREE.LineSegments(rayLineGeom, rayLineMat);
+      rayLines.computeLineDistances();
+      this.transparentGroup.add(rayLines);
+    }
   }
 
   setupInteractions() {
@@ -802,7 +1150,7 @@ export class GlobeView {
       this.raycaster.setFromCamera(this.mouse, this.camera);
 
       // Check if clicked on UE Marker
-      const ueIntersects = this.raycaster.intersectObject(this.ueSphere);
+      const ueIntersects = this.raycaster.intersectObjects(this.ueMarkerGroup.children, true);
       if (ueIntersects.length > 0) {
         this.isDraggingUE = true;
         this.controls.enabled = false;
@@ -811,10 +1159,11 @@ export class GlobeView {
       }
 
       // Check if clicked on a Vertex Marker
-      const vIntersects = this.raycaster.intersectObjects(this.vertexMarkersGroup.children);
+      const vIntersects = this.raycaster.intersectObjects(this.vertexMarkersGroup.children, true);
       if (vIntersects.length > 0) {
         this.isDraggingVertex = true;
-        this.draggedVertexIndex = vIntersects[0].object.userData.vertexIndex;
+        const obj = vIntersects[0].object;
+        this.draggedVertexIndex = obj.userData.vertexIndex !== undefined ? obj.userData.vertexIndex : obj.parent?.userData?.vertexIndex;
         this.controls.enabled = false;
         dom.style.cursor = 'grabbing';
         return;
@@ -851,8 +1200,8 @@ export class GlobeView {
 
       // Hover feedback
       this.raycaster.setFromCamera(this.mouse, this.camera);
-      const ueHover = this.raycaster.intersectObject(this.ueSphere);
-      const vHover = this.raycaster.intersectObjects(this.vertexMarkersGroup.children);
+      const ueHover = this.raycaster.intersectObjects(this.ueMarkerGroup.children, true);
+      const vHover = this.raycaster.intersectObjects(this.vertexMarkersGroup.children, true);
       if (ueHover.length > 0 || vHover.length > 0) {
         dom.style.cursor = 'grab';
       } else {
@@ -991,6 +1340,21 @@ export class GlobeView {
     // Map altitude 300..1200 km to radius 6.5..8.5 units
     const norm = (altKm - 300) / (1200 - 300);
     this.orbitRadius = this.earthRadius * (1.2 + norm * 0.4);
+
+    if (this.orbitLine) {
+      const orbitPts = [];
+      const segments = 120;
+      for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        orbitPts.push(new THREE.Vector3(
+          Math.cos(angle) * this.orbitRadius,
+          0,
+          Math.sin(angle) * this.orbitRadius
+        ));
+      }
+      this.orbitLine.geometry.setFromPoints(orbitPts);
+      this.orbitLine.computeLineDistances();
+    }
   }
 
   onResize() {
@@ -1008,39 +1372,27 @@ export class GlobeView {
     // Update Controls
     this.controls.update();
 
-    // Satellite Orbit Motion
-    if (this.isOrbiting && this.satelliteGroup) {
+    // Satellite Orbit Motion (perfectly aligned with orbit ring inside orbitalPlaneGroup)
+    if (this.isOrbiting && this.satelliteGroup && this.orbitalPlaneGroup) {
       this.orbitAngle += this.orbitSpeed;
       const x = Math.cos(this.orbitAngle) * this.orbitRadius;
       const z = Math.sin(this.orbitAngle) * this.orbitRadius;
 
-      // Apply inclination rotation
-      const inc = this.orbitInclination * DEG_TO_RAD;
-      const y = z * Math.sin(inc);
-      const zTilted = z * Math.cos(inc);
+      // In orbitalPlaneGroup coordinates, orbit ring is flat on X-Z plane
+      this.satelliteGroup.position.set(x, 0, z);
 
-      this.satelliteGroup.position.set(x, y, zTilted);
-
-      // Reorient satellite towards Earth center
+      // Reorient satellite towards Earth core in world space
       this.satelliteGroup.lookAt(0, 0, 0);
+
+      // Compute world position of satellite for line-of-sight & conical beam
+      const satWorldPos = new THREE.Vector3();
+      this.satelliteGroup.getWorldPosition(satWorldPos);
 
       // Update beam if target centroid is available
       if (this.currentData && this.currentData.centroid) {
         const cPos = this.latLonToSpherePos(this.currentData.centroid.lat, this.currentData.centroid.lon, 0.05);
-        this.updateSatelliteBeam(cPos);
+        this.updateSatelliteBeam(cPos, satWorldPos);
       }
-    }
-
-    // Centroid pulse animation
-    if (this.centroidRing) {
-      const s = 1.0 + Math.sin(Date.now() * 0.005) * 0.25;
-      this.centroidRing.scale.set(s, s, s);
-    }
-
-    // UE marker pulse animation
-    if (this.ueRing) {
-      const s2 = 1.0 + Math.sin(Date.now() * 0.007) * 0.35;
-      this.ueRing.scale.set(s2, s2, s2);
     }
 
     this.renderer.render(this.scene, this.camera);
